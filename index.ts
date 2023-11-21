@@ -13,6 +13,7 @@ import {
   EIP712_SAFE_OPERATION_TYPE,
   SAFE_ADDRESSES_MAP,
   encodeCallData,
+  getAccountAddress,
   getAccountInitCode,
 } from "./utils/safe";
 import { generateTransferCallData } from "./utils/erc20";
@@ -86,10 +87,21 @@ const initCode = await getAccountInitCode({
   paymasterAddress: erc20PaymasterAddress,
 });
 
-const senderAddress = await getSenderAddress(publicClient, {
-  initCode,
-  entryPoint: ENTRY_POINT_ADDRESS,
+const senderAddress = await getAccountAddress({
+  client: publicClient,
+  owner: signer.address,
+  addModuleLibAddress: SAFE_ADDRESSES_MAP["1.4.1"][5].ADD_MODULES_LIB_ADDRESS,
+  safe4337ModuleAddress:
+    SAFE_ADDRESSES_MAP["1.4.1"][5].SAFE_4337_MODULE_ADDRESS,
+  safeProxyFactoryAddress:
+    SAFE_ADDRESSES_MAP["1.4.1"][5].SAFE_PROXY_FACTORY_ADDRESS,
+  safeSingletonAddress: SAFE_ADDRESSES_MAP["1.4.1"][5].SAFE_SINGLETON_ADDRESS,
+  saltNonce: 2n,
+  erc20TokenAddress: usdcTokenAddress,
+  multiSendAddress,
+  paymasterAddress: erc20PaymasterAddress,
 });
+
 console.log("Counterfactual sender address:", senderAddress);
 
 // Fetch USDC balance of sender

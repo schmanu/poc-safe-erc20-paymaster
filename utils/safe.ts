@@ -1,4 +1,18 @@
-import { Address, Hex, concatHex, encodeFunctionData, zeroAddress } from "viem";
+import {
+  Address,
+  Chain,
+  Client,
+  Hex,
+  PublicClient,
+  Transport,
+  concatHex,
+  encodeFunctionData,
+  encodePacked,
+  getContractAddress,
+  hexToBigInt,
+  keccak256,
+  zeroAddress,
+} from "viem";
 import { InternalTx, encodeMultiSend } from "./multisend";
 import { generateApproveCallData } from "./erc20";
 
@@ -39,13 +53,13 @@ const getInitializerCode = async ({
       to: addModuleLibAddress,
       data: enableModuleCallData(safe4337ModuleAddress),
       value: 0n,
-      operation: 1,
+      operation: 1, // 1 = DelegateCall required for enabling the module
     },
     {
       to: erc20TokenAddress,
       data: generateApproveCallData(paymasterAddress),
       value: 0n,
-      operation: 0,
+      operation: 0, // 0 = Call
     },
   ];
 
@@ -262,5 +276,80 @@ export const encodeCallData = (params: {
     ],
     functionName: "executeUserOp",
     args: [params.to, params.value, params.data, 0],
+  });
+};
+
+export const getAccountAddress = async <
+  TTransport extends Transport = Transport,
+  TChain extends Chain | undefined = Chain | undefined
+>({
+  client,
+  owner,
+  addModuleLibAddress,
+  safe4337ModuleAddress,
+  safeProxyFactoryAddress,
+  safeSingletonAddress,
+  saltNonce = 0n,
+  erc20TokenAddress,
+  multiSendAddress,
+  paymasterAddress,
+}: {
+  client: PublicClient;
+  owner: Address;
+  addModuleLibAddress: Address;
+  safe4337ModuleAddress: Address;
+  safeProxyFactoryAddress: Address;
+  safeSingletonAddress: Address;
+  saltNonce?: bigint;
+  erc20TokenAddress: Address;
+  multiSendAddress: Address;
+  paymasterAddress: Address;
+}): Promise<Address> => {
+  const proxyCreationCode = await client.readContract({
+    abi: [
+      {
+        inputs: [],
+        name: "proxyCreationCode",
+        outputs: [
+          {
+            internalType: "bytes",
+            name: "",
+            type: "bytes",
+          },
+        ],
+        stateMutability: "pure",
+        type: "function",
+      },
+    ],
+    address: safeProxyFactoryAddress,
+    functionName: "proxyCreationCode",
+  });
+
+  const deploymentCode = encodePacked(
+    ["bytes", "uint256"],
+    [proxyCreationCode, hexToBigInt(safeSingletonAddress)]
+  );
+
+  const initializer = await getInitializerCode({
+    owner,
+    addModuleLibAddress,
+    safe4337ModuleAddress,
+    erc20TokenAddress,
+    multiSendAddress,
+    paymasterAddress,
+  });
+
+  const salt = keccak256(
+    encodePacked(
+      ["bytes32", "uint256"],
+      [keccak256(encodePacked(["bytes"], [initializer])), saltNonce]
+    )
+  );
+
+  return getContractAddress({
+    from: safeProxyFactoryAddress,
+    salt,
+    bytecode: deploymentCode,
+    opcode: "CREATE2",
   });
 };
